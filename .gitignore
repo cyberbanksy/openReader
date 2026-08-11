@@ -91,3 +91,11 @@ sw.*
 
 /resources/
 /android/app/release/
+
+# Native rewrite build output
+/native/android/.gradle/
+/native/android/**/build/
+/native/android/dist/
+/native/apple/.build/
+*.xcuserstate
+xcuserdata/

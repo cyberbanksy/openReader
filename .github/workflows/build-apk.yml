@@ -4,10 +4,16 @@ on:
   push:
     paths-ignore:
       - 'ios/**'
+      - 'native/**'
+      - 'scripts/build-android.sh'
+      - 'scripts/build-apple.sh'
       - 'readme.md'
   pull_request:
     paths-ignore:
       - 'ios/**'
+      - 'native/**'
+      - 'scripts/build-android.sh'
+      - 'scripts/build-apple.sh'
       - 'readme.md'
 jobs:
   main:
