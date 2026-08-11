@@ -26,6 +26,12 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".reader.ReaderActivity"
+            android:configChanges="keyboardHidden|orientation|screenSize|smallestScreenSize"
+            android:exported="false"
+            android:screenOrientation="unspecified" />
+
         <service
             android:name=".playback.PlaybackService"
             android:exported="true"

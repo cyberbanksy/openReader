@@ -12,9 +12,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.orgista.openreader.domain.BookFormat
 import com.orgista.openreader.domain.DeviceClassifier
 import com.orgista.openreader.domain.DeviceProfile
 import com.orgista.openreader.domain.PlatformMode
+import com.orgista.openreader.reader.ReaderActivity
 import com.orgista.openreader.ui.OpenReaderApp
 import com.orgista.openreader.ui.OpenReaderViewModel
 import com.orgista.openreader.ui.theme.OpenReaderTheme
@@ -32,7 +34,13 @@ class MainActivity : ComponentActivity() {
                     deviceProfile = currentDeviceProfile(),
                     onFilter = viewModel::setFilter,
                     onSelectBook = viewModel::selectBook,
-                    onOpenBook = viewModel::open,
+                    onOpenBook = { book ->
+                        if (book.format == BookFormat.Ebook && !book.isDemo && state.connected) {
+                            startActivity(ReaderActivity.intent(this, book.id, book.title))
+                        } else {
+                            viewModel.open(book)
+                        }
+                    },
                     onShowConnection = viewModel::showConnection,
                     onConnect = viewModel::connect,
                     onDisconnect = viewModel::disconnect,

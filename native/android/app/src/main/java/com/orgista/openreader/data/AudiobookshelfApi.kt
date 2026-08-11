@@ -11,6 +11,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
@@ -138,6 +140,58 @@ class AudiobookshelfApi {
                 tracks = tracks,
             )
         }
+
+    suspend fun downloadEbook(
+        session: ServerSession,
+        bookId: String,
+        cacheDirectory: File,
+    ): File = withContext(Dispatchers.IO) {
+        require(cacheDirectory.mkdirs() || cacheDirectory.isDirectory) {
+            "The ebook cache is unavailable."
+        }
+        cacheDirectory.listFiles()
+            ?.filter { it.name.endsWith(".part") }
+            ?.forEach(File::delete)
+
+        val destination = File(cacheDirectory, EbookFile.cacheName(bookId))
+        if (destination.exists()) {
+            runCatching { EbookFile.requireValid(destination) }
+                .onSuccess { return@withContext destination }
+            destination.delete()
+        }
+
+        val partial = File(cacheDirectory, "${destination.name}.part")
+        val connection = URL("${session.serverUrl}${EbookFile.endpoint(bookId)}")
+            .openConnection() as HttpURLConnection
+        try {
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 10_000
+            connection.readTimeout = 60_000
+            connection.instanceFollowRedirects = false
+            connection.setRequestProperty("Accept", "application/epub+zip, application/octet-stream")
+            connection.setRequestProperty("Authorization", "Bearer ${session.accessToken}")
+            val status = connection.responseCode
+            if (status !in 200..299) {
+                val responseText = responseStream(connection, status).bufferedReader().use { it.readText() }
+                val message = runCatching { JSONObject(responseText).optString("error") }.getOrNull()
+                    ?.takeIf(String::isNotBlank)
+                    ?: "Audiobookshelf returned HTTP $status while downloading the ebook."
+                throw ApiException(status, message)
+            }
+            responseStream(connection, status).use { input ->
+                FileOutputStream(partial).use(input::copyTo)
+            }
+            EbookFile.requireValid(partial)
+            if (!partial.renameTo(destination)) {
+                partial.copyTo(destination, overwrite = true)
+                partial.delete()
+            }
+            destination
+        } finally {
+            connection.disconnect()
+            partial.delete()
+        }
+    }
 
     private fun parseItems(libraryId: String, libraryName: String, response: JSONObject): List<LibraryBook> {
         val results = response.optJSONArray("results") ?: JSONArray()

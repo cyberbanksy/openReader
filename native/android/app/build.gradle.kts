@@ -38,6 +38,7 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -58,6 +59,7 @@ dependencies {
 
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.core:core-ktx:1.18.0")
+    implementation("androidx.fragment:fragment-ktx:1.8.9")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
     implementation("androidx.compose.ui:ui")
@@ -71,6 +73,11 @@ dependencies {
     implementation("androidx.media3:media3-session:$media3Version")
     implementation("androidx.media3:media3-common:$media3Version")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("org.readium.kotlin-toolkit:readium-shared:3.3.0")
+    implementation("org.readium.kotlin-toolkit:readium-streamer:3.3.0")
+    implementation("org.readium.kotlin-toolkit:readium-navigator:3.3.0")
+
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

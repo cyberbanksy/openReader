@@ -73,6 +73,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -311,7 +312,12 @@ private fun LibraryTopBar(
         } else {
             Icon(Icons.Rounded.AutoStories, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.width(10.dp))
-            Text("OpenReader", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Text(
+                "OpenReader",
+                fontFamily = FontFamily.Serif,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
             Spacer(Modifier.weight(1f))
             IconButton(onClick = { onSearchActiveChange(true) }) {
                 Icon(Icons.Rounded.Search, contentDescription = "Search")

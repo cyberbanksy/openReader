@@ -21,9 +21,17 @@ Android currently provides:
 - Encrypted token persistence without password storage
 - Native library browsing, filtering, search, list-detail layouts, and a demo catalog
 - Background audiobook playback through a Media3 session service
+- Native EPUB reading through Readium with page navigation, font sizing, themes, and local resume
+- Authenticated EPUB caching with structural validation and partial-download cleanup
 - API 37 compilation and target configuration
 
-Apple currently provides a tested native domain and SwiftUI library foundation with compact tab and regular sidebar layouts. The installable iOS target, Keychain session store, AVFoundation player, and Readium navigator are the next Apple milestone.
+Apple currently provides a tested native domain and SwiftUI library foundation with compact tab and regular sidebar layouts. The installable iOS target, Keychain session store, AVFoundation player, and Readium Swift navigator are the next Apple milestone.
+
+## Library Contents
+
+OpenReader displays media files indexed by Audiobookshelf. Author or title metadata that exists only in Bookshelf/Readarr, including unmonitored discovery entries, will not appear until a user-owned ebook or audiobook file is imported and the Audiobookshelf library is scanned.
+
+The current self-hosted test library contains the public-domain EPUB and LibriVox audiobook of *Alice's Adventures in Wonderland*. It does not contain Junie B. Jones or Judy Moody media files.
 
 ## Build
 
@@ -40,7 +48,7 @@ No server credentials are embedded in either application. Android stores access 
 
 ## Reading Engines
 
-EPUB parsing and navigation will use Readium Kotlin and Readium Swift. Audiobook playback uses the operating system media stacks. This keeps format handling and playback behavior on maintained, standards-oriented libraries rather than custom parsers.
+Android EPUB parsing and navigation use Readium Kotlin. The Apple target will use Readium Swift. Audiobook playback uses the operating system media stacks. This keeps format handling and playback behavior on maintained, standards-oriented libraries rather than custom parsers.
 
 ## License
 
