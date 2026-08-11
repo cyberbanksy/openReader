@@ -2,11 +2,14 @@ name: Build APK
 
 on:
   push:
+    branches-ignore:
+      - 'native-rewrite'
     paths-ignore:
       - 'ios/**'
       - 'native/**'
       - 'scripts/build-android.sh'
       - 'scripts/build-apple.sh'
+      - '.github/workflows/native-ci.yml'
       - 'readme.md'
   pull_request:
     paths-ignore:
@@ -14,6 +17,7 @@ on:
       - 'native/**'
       - 'scripts/build-android.sh'
       - 'scripts/build-apple.sh'
+      - '.github/workflows/native-ci.yml'
       - 'readme.md'
 jobs:
   main:
