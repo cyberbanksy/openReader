@@ -4,12 +4,10 @@ import java.io.File
 import java.util.zip.ZipFile
 
 object EbookFile {
-    fun endpoint(bookId: String): String {
-        require(bookId.isNotBlank()) { "The book ID is missing." }
-        require(bookId.all { it.isLetterOrDigit() || it == '-' || it == '_' }) {
-            "The book ID contains unsupported characters."
-        }
-        return "/api/items/$bookId/ebook"
+    fun endpoint(bookId: String, fileId: String): String {
+        requireSafeId(bookId, "book")
+        requireSafeId(fileId, "ebook file")
+        return "/api/items/$bookId/file/$fileId/download"
     }
 
     fun cacheName(bookId: String): String {
@@ -33,6 +31,13 @@ object EbookFile {
                 failure.message ?: "The downloaded file is not a valid EPUB.",
                 failure,
             )
+        }
+    }
+
+    private fun requireSafeId(value: String, label: String) {
+        require(value.isNotBlank()) { "The $label ID is missing." }
+        require(value.all { it.isLetterOrDigit() || it == '-' || it == '_' }) {
+            "The $label ID contains unsupported characters."
         }
     }
 }

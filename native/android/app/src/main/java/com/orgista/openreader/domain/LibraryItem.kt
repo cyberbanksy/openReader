@@ -12,6 +12,33 @@ enum class BookFormat {
     }
 }
 
+enum class CatalogSourceKind {
+    Audiobookshelf,
+    Arr,
+    PublicLibrary,
+    PublicDomain,
+}
+
+enum class CatalogAvailability {
+    Ready,
+    Available,
+    Borrowed,
+    OnHold,
+    Requestable,
+    Requested,
+    Downloading,
+    Importing,
+    Unavailable,
+}
+
+data class BookSource(
+    val id: String,
+    val name: String,
+    val kind: CatalogSourceKind,
+    val availability: CatalogAvailability,
+    val detail: String? = null,
+)
+
 data class LibraryBook(
     val id: String,
     val libraryId: String,
@@ -23,10 +50,49 @@ data class LibraryBook(
     val progress: Float = 0f,
     val description: String? = null,
     val coverEndpoint: String? = null,
+    val coverUrl: String? = null,
+    val sources: List<BookSource> = emptyList(),
     val isDemo: Boolean = false,
 )
 
+object CatalogMerger {
+    fun merge(owned: List<LibraryBook>, managed: List<LibraryBook>): List<LibraryBook> {
+        val merged = owned.toMutableList()
+        managed.forEach { managedBook ->
+            val index = merged.indexOfFirst { candidate ->
+                candidate.format == managedBook.format &&
+                    normalize(candidate.title) == normalize(managedBook.title) &&
+                    normalize(candidate.creator) == normalize(managedBook.creator)
+            }
+            if (index == -1) {
+                merged += managedBook
+            } else {
+                val ownedBook = merged[index]
+                merged[index] = ownedBook.copy(
+                    description = ownedBook.description ?: managedBook.description,
+                    coverUrl = ownedBook.coverUrl ?: managedBook.coverUrl,
+                    sources = (ownedBook.sources + managedBook.sources)
+                        .distinctBy { source -> source.kind to source.id },
+                )
+            }
+        }
+        return merged.sortedWith(compareBy<LibraryBook> { it.format }.thenBy { it.title.lowercase() })
+    }
+
+    private fun normalize(value: String): String = value
+        .lowercase()
+        .filter(Char::isLetterOrDigit)
+}
+
 object DemoCatalog {
+    private val publicDomainSource = BookSource(
+        id = "preview-public-domain",
+        name = "Public domain",
+        kind = CatalogSourceKind.PublicDomain,
+        availability = CatalogAvailability.Available,
+        detail = "Preview catalog",
+    )
+
     val books = listOf(
         LibraryBook(
             id = "demo-alice-audio",
@@ -37,6 +103,7 @@ object DemoCatalog {
             format = BookFormat.Audiobook,
             durationSeconds = 10_038.0,
             progress = 0.34f,
+            sources = listOf(publicDomainSource),
             isDemo = true,
         ),
         LibraryBook(
@@ -46,6 +113,7 @@ object DemoCatalog {
             creator = "Lewis Carroll",
             format = BookFormat.Ebook,
             progress = 0.18f,
+            sources = listOf(publicDomainSource),
             isDemo = true,
         ),
         LibraryBook(
@@ -54,6 +122,7 @@ object DemoCatalog {
             title = "The Secret Garden",
             creator = "Frances Hodgson Burnett",
             format = BookFormat.Ebook,
+            sources = listOf(publicDomainSource),
             isDemo = true,
         ),
         LibraryBook(
@@ -63,6 +132,7 @@ object DemoCatalog {
             creator = "Robert Louis Stevenson",
             format = BookFormat.Audiobook,
             durationSeconds = 18_900.0,
+            sources = listOf(publicDomainSource),
             isDemo = true,
         ),
         LibraryBook(
@@ -71,6 +141,7 @@ object DemoCatalog {
             title = "Anne of Green Gables",
             creator = "L. M. Montgomery",
             format = BookFormat.Ebook,
+            sources = listOf(publicDomainSource),
             isDemo = true,
         ),
         LibraryBook(
@@ -80,6 +151,7 @@ object DemoCatalog {
             creator = "L. Frank Baum",
             format = BookFormat.Audiobook,
             durationSeconds = 14_760.0,
+            sources = listOf(publicDomainSource),
             isDemo = true,
         ),
     )

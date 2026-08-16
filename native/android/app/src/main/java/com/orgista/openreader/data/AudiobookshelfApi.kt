@@ -3,6 +3,9 @@ package com.orgista.openreader.data
 import android.os.Build
 import com.orgista.openreader.BuildConfig
 import com.orgista.openreader.domain.BookFormat
+import com.orgista.openreader.domain.BookSource
+import com.orgista.openreader.domain.CatalogAvailability
+import com.orgista.openreader.domain.CatalogSourceKind
 import com.orgista.openreader.domain.LibraryBook
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -93,6 +96,16 @@ class AudiobookshelfApi {
         }.sortedWith(compareBy<LibraryBook> { it.format }.thenBy { it.title.lowercase() })
     }
 
+    suspend fun scanLibraries(session: ServerSession) = withContext(Dispatchers.IO) {
+        val libraries = authorizedRequest(session, "/api/libraries").optJSONArray("libraries") ?: JSONArray()
+        for (index in 0 until libraries.length()) {
+            val id = libraries.optJSONObject(index)?.optString("id").orEmpty()
+            if (id.isNotBlank()) {
+                authorizedRequest(session, "/api/libraries/$id/scan", method = "POST")
+            }
+        }
+    }
+
     suspend fun startPlayback(session: ServerSession, book: LibraryBook): PlaybackDescriptor =
         withContext(Dispatchers.IO) {
             require(book.format == BookFormat.Audiobook) { "Only audiobooks can be played." }
@@ -161,7 +174,13 @@ class AudiobookshelfApi {
         }
 
         val partial = File(cacheDirectory, "${destination.name}.part")
-        val connection = URL("${session.serverUrl}${EbookFile.endpoint(bookId)}")
+        val item = authorizedRequest(session, "/api/items/$bookId?expanded=1")
+        val ebookFileId = item.optJSONObject("media")
+            ?.optJSONObject("ebookFile")
+            ?.optString("ino")
+            ?.takeIf(String::isNotBlank)
+            ?: throw IllegalStateException("Audiobookshelf did not return an EPUB file for this book.")
+        val connection = URL("${session.serverUrl}${EbookFile.endpoint(bookId, ebookFileId)}")
             .openConnection() as HttpURLConnection
         try {
             connection.requestMethod = "GET"
@@ -211,12 +230,20 @@ class AudiobookshelfApi {
                 libraryId = libraryId,
                 title = title,
                 creator = metadata.optString("authorName", "Unknown author"),
-                narrator = metadata.optString("narratorName").takeIf(String::isNotBlank),
+                narrator = metadata.nullableString("narratorName"),
                 format = format,
                 durationSeconds = duration,
                 progress = progress,
-                description = metadata.optString("description").takeIf(String::isNotBlank),
+                description = metadata.nullableString("description"),
                 coverEndpoint = "/api/items/$id/cover",
+                sources = listOf(
+                    BookSource(
+                        id = libraryId,
+                        name = libraryName,
+                        kind = CatalogSourceKind.Audiobookshelf,
+                        availability = CatalogAvailability.Ready,
+                    ),
+                ),
             )
         }
     }
@@ -272,5 +299,8 @@ class AudiobookshelfApi {
         if (status in 200..399) connection.inputStream else connection.errorStream
             ?: connection.inputStream
 }
+
+internal fun JSONObject.nullableString(name: String): String? =
+    optString(name).trim().takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
 
 class ApiException(val statusCode: Int, message: String) : IllegalStateException(message)

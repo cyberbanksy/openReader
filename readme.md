@@ -23,6 +23,8 @@ Android currently provides:
 - Background audiobook playback through a Media3 session service
 - Native EPUB reading through Readium with page navigation, font sizing, themes, and local resume
 - Authenticated EPUB caching with structural validation and partial-download cleanup
+- Project Gutenberg OPDS search with direct, validated EPUB downloads
+- Optional Standard Ebooks OPDS search using a Patrons Circle email
 - API 37 compilation and target configuration
 
 Apple currently provides a tested native domain and SwiftUI library foundation with compact tab and regular sidebar layouts. The installable iOS target, Keychain session store, AVFoundation player, and Readium Swift navigator are the next Apple milestone.
@@ -30,6 +32,8 @@ Apple currently provides a tested native domain and SwiftUI library foundation w
 ## Library Contents
 
 OpenReader displays media files indexed by Audiobookshelf. Author or title metadata that exists only in Bookshelf/Readarr, including unmonitored discovery entries, will not appear until a user-owned ebook or audiobook file is imported and the Audiobookshelf library is scanned.
+
+Public-domain OPDS results are downloaded into OpenReader's local EPUB cache and do not pass through Bookshelf, Readarr, or Audiobookshelf. Project Gutenberg is available without an account. Standard Ebooks requires access to its full OPDS feed and uses the Patrons Circle email entered under Sources.
 
 The current self-hosted test library contains the public-domain EPUB and LibriVox audiobook of *Alice's Adventures in Wonderland*. It does not contain Junie B. Jones or Judy Moody media files.
 

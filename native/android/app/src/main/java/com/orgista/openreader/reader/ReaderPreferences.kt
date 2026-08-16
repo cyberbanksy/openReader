@@ -26,16 +26,32 @@ class ReaderPreferences(context: Context, private val bookId: String) {
 
     var theme: Theme
         get() = runCatching {
-            Theme.valueOf(preferences.getString(key("theme"), Theme.SEPIA.name)!!)
-        }.getOrDefault(Theme.SEPIA)
+            Theme.valueOf(preferences.getString(key("theme"), Theme.LIGHT.name)!!)
+        }.getOrDefault(Theme.LIGHT)
         set(value) {
             preferences.edit().putString(key("theme"), value.name).apply()
         }
+
+    var layout: ReaderLayout
+        get() = ReaderLayout.fromStored(preferences.getString(key("layout"), null))
+        set(value) {
+            preferences.edit().putString(key("layout"), value.name).apply()
+        }
+
+    fun loadHighlights(): List<ReaderHighlight> =
+        ReaderHighlightCodec.decode(preferences.getString(key("highlights"), null))
+
+    fun saveHighlights(highlights: List<ReaderHighlight>) {
+        preferences.edit().putString(key("highlights"), ReaderHighlightCodec.encode(highlights)).apply()
+    }
+
+    fun saveHighlightsImmediately(highlights: List<ReaderHighlight>): Boolean =
+        preferences.edit().putString(key("highlights"), ReaderHighlightCodec.encode(highlights)).commit()
 
     private fun key(suffix: String) = "$bookId.$suffix"
 
     private companion object {
         const val PREFERENCES = "openreader_reader"
-        const val DEFAULT_FONT_SIZE = 1.0
+        const val DEFAULT_FONT_SIZE = 0.95
     }
 }

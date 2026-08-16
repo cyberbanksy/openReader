@@ -8,4 +8,10 @@
         <item name="android:statusBarColor">#181512</item>
         <item name="android:windowNoTitle">true</item>
     </style>
+
+    <style name="Theme.OpenReader.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#1A1A1A</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_openreader_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.OpenReader</item>
+    </style>
 </resources>

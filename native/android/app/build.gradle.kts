@@ -19,16 +19,20 @@ android {
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"http://192.168.1.87:13378\"")
+        buildConfigField("String", "DEFAULT_EBOOK_ARR_URL", "\"http://192.168.1.87:8787\"")
+        buildConfigField("String", "DEFAULT_AUDIOBOOK_ARR_URL", "\"http://192.168.1.87:8788\"")
     }
 
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            manifestPlaceholders["readerActivityExported"] = "true"
         }
         release {
             isMinifyEnabled = true
             proguardFiles("proguard-rules.pro")
+            manifestPlaceholders["readerActivityExported"] = "false"
         }
     }
 
@@ -59,6 +63,7 @@ dependencies {
 
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.core:core-ktx:1.18.0")
+    implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.fragment:fragment-ktx:1.8.9")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")

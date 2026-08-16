@@ -8,4 +8,12 @@
         <item name="android:statusBarColor">#FAF6F0</item>
         <item name="android:windowNoTitle">true</item>
     </style>
+
+    <!-- Brand shell is fixed dark regardless of system light/dark mode; the boot animation
+         (ui/boot/OpenReaderBootScreen.kt) takes over immediately after this static frame. -->
+    <style name="Theme.OpenReader.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#1A1A1A</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_openreader_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.OpenReader</item>
+    </style>
 </resources>

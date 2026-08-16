@@ -1,0 +1,138 @@
+package com.orgista.openreader.reader
+
+import org.json.JSONArray
+import org.json.JSONObject
+import org.readium.r2.shared.publication.Locator
+
+enum class ReaderLayout {
+    Page,
+    Spread,
+    Scroll;
+
+    companion object {
+        fun fromStored(value: String?): ReaderLayout = entries.firstOrNull { it.name == value } ?: Page
+    }
+}
+
+data class ReaderHighlight(
+    val id: String,
+    val locator: Locator,
+    val tint: Int,
+)
+
+data class FollowAlongPassages(
+    val previous: String = "",
+    val current: String = "Preparing the next passage…",
+    val next: String = "",
+)
+
+object FollowAlongPassageMapper {
+    fun fromLocators(locators: List<Locator>, activeIndex: Int): FollowAlongPassages = fromTexts(
+        texts = locators.map(::passageText),
+        activeIndex = activeIndex,
+    )
+
+    fun fromTexts(texts: List<String>, activeIndex: Int): FollowAlongPassages {
+        if (texts.isEmpty()) return FollowAlongPassages()
+        val safeIndex = activeIndex.coerceIn(texts.indices)
+        val resolvedIndex = closestNonBlankIndex(texts, safeIndex) ?: return FollowAlongPassages()
+        val current = compact(texts[resolvedIndex]).ifBlank { "Listening…" }
+        return FollowAlongPassages(
+            previous = nearestDistinct(texts, resolvedIndex, -1, current),
+            current = current,
+            next = nearestDistinct(texts, resolvedIndex, 1, current),
+        )
+    }
+
+    private fun passageText(locator: Locator): String {
+        val source = locator.text.highlight
+            ?.takeIf(String::isNotBlank)
+            ?: locator.text.after
+                ?.takeIf(String::isNotBlank)
+            ?: locator.text.before.orEmpty()
+        return compact(source)
+    }
+
+    private fun nearestDistinct(
+        texts: List<String>,
+        activeIndex: Int,
+        direction: Int,
+        differentFrom: String = "",
+    ): String {
+        var index = activeIndex + direction
+        while (index in texts.indices) {
+            val candidate = compact(texts[index])
+            if (candidate.isNotBlank() && candidate != differentFrom) return candidate
+            index += direction
+        }
+        return ""
+    }
+
+    private fun closestNonBlankIndex(texts: List<String>, activeIndex: Int): Int? {
+        if (compact(texts[activeIndex]).isNotBlank()) return activeIndex
+        for (distance in 1..texts.lastIndex) {
+            val after = activeIndex + distance
+            if (after in texts.indices && compact(texts[after]).isNotBlank()) return after
+            val before = activeIndex - distance
+            if (before in texts.indices && compact(texts[before]).isNotBlank()) return before
+        }
+        return null
+    }
+
+    private fun compact(value: String): String {
+        val normalized = value.replace(Regex("\\s+"), " ").trim()
+        if (normalized.length <= MAX_PASSAGE_LENGTH) return normalized
+        val breakAt = normalized.lastIndexOf(' ', MAX_PASSAGE_LENGTH)
+            .takeIf { it >= MIN_PASSAGE_LENGTH }
+            ?: MAX_PASSAGE_LENGTH
+        return normalized.take(breakAt).trimEnd() + "…"
+    }
+
+    private const val MIN_PASSAGE_LENGTH = 96
+    private const val MAX_PASSAGE_LENGTH = 210
+}
+
+object FollowAlongDocumentTextParser {
+    fun parse(rawJavascriptResult: String?): List<String> {
+        if (rawJavascriptResult.isNullOrBlank() || rawJavascriptResult == "null") return emptyList()
+        return runCatching {
+            val decoded = JSONObject("{\"value\":$rawJavascriptResult}").optString("value")
+            JSONArray(decoded).let { array ->
+                (0 until array.length())
+                    .map { index -> array.optString(index).replace(Regex("\\s+"), " ").trim() }
+                    .filter { it.length >= MIN_TEXT_LENGTH }
+                    .distinct()
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private const val MIN_TEXT_LENGTH = 12
+}
+
+object ReaderHighlightCodec {
+    fun encode(highlights: List<ReaderHighlight>): String = JSONArray().apply {
+        highlights.forEach { highlight ->
+            put(
+                JSONObject()
+                    .put("id", highlight.id)
+                    .put("locator", highlight.locator.toJSON())
+                    .put("tint", highlight.tint),
+            )
+        }
+    }.toString()
+
+    fun decode(raw: String?): List<ReaderHighlight> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            (0 until array.length()).mapNotNull { index ->
+                val item = array.optJSONObject(index) ?: return@mapNotNull null
+                val id = item.optString("id").takeIf(String::isNotBlank) ?: return@mapNotNull null
+                val locator = item.optJSONObject("locator")?.let(Locator::fromJSON) ?: return@mapNotNull null
+                ReaderHighlight(id = id, locator = locator, tint = item.optInt("tint", DEFAULT_TINT))
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private const val DEFAULT_TINT = 0xFFF2C96D.toInt()
+}

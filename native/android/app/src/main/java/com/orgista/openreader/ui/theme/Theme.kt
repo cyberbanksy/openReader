@@ -13,12 +13,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
 object OpenReaderColors {
-    val Ink = Color(0xFF2B2118)
+    val Espresso = Color(0xFF1C1409)
+    val Ink = Espresso
     val Canvas = Color(0xFFFAF6F0)
-    val Paper = Color(0xFFFFFDF9)
-    val Muted = Color(0xFF6F665E)
-    val Amber = Color(0xFFC4802A)
-    val Forest = Color(0xFF3E6259)
+    val Paper = Color(0xFFFDF9F2)
+    val Muted = Color(0xFF8A7560)
+    // Brand text amber (openreader-brand.jsx: P.text / P.textDeep).
+    val WarmAmber = Color(0xFFE8A552)
+    val WarmAmberDeep = Color(0xFFC4863D)
+    val Amber = WarmAmber
+    val ParchmentBorder = Color(0xFFE2D5C3)
+    // Brand audio teal (openreader-brand.jsx: P.audio / P.audioDeep).
+    val Forest = Color(0xFF3AA896)
+    val ForestDeep = Color(0xFF2C8577)
     val Rust = Color(0xFFA54E32)
     val DarkCanvas = Color(0xFF181512)
     val DarkPaper = Color(0xFF25211D)
@@ -37,13 +44,14 @@ private val lightScheme = lightColorScheme(
     onSurface = OpenReaderColors.Ink,
     surfaceVariant = Color(0xFFF0E9E1),
     onSurfaceVariant = OpenReaderColors.Muted,
-    outline = Color(0xFFC3B8AB),
+    outline = OpenReaderColors.ParchmentBorder,
+    outlineVariant = Color(0xFFE8DDD0),
 )
 
 private val darkScheme = darkColorScheme(
-    primary = Color(0xFFE3A353),
+    primary = OpenReaderColors.WarmAmber,
     onPrimary = Color(0xFF412600),
-    secondary = Color(0xFF8EB9AD),
+    secondary = OpenReaderColors.Forest,
     onSecondary = Color(0xFF0B352D),
     tertiary = Color(0xFFE09276),
     background = OpenReaderColors.DarkCanvas,
@@ -53,9 +61,16 @@ private val darkScheme = darkColorScheme(
     surfaceVariant = Color(0xFF332E29),
     onSurfaceVariant = OpenReaderColors.DarkMuted,
     outline = Color(0xFF55545B),
+    outlineVariant = Color(0xFF3D3935),
 )
 
 private val typography = Typography(
+    headlineMedium = TextStyle(
+        fontFamily = FontFamily.Serif,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 28.sp,
+        letterSpacing = 0.sp,
+    ),
     headlineSmall = TextStyle(
         fontFamily = FontFamily.Serif,
         fontWeight = FontWeight.SemiBold,

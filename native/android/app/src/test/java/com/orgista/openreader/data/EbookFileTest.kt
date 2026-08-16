@@ -6,7 +6,10 @@ import org.junit.Test
 class EbookFileTest {
     @Test
     fun usesAudiobookshelfEbookEndpoint() {
-        assertEquals("/api/items/book-123/ebook", EbookFile.endpoint("book-123"))
+        assertEquals(
+            "/api/items/book-123/file/987654321/download",
+            EbookFile.endpoint("book-123", "987654321"),
+        )
     }
 
     @Test
