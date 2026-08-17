@@ -13,7 +13,9 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -164,6 +166,7 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
     private var lastFollowAlongPosition = -1
     private var audioStarting by mutableStateOf(false)
     private var audioError by mutableStateOf<String?>(null)
+    private var wordTrack: FollowAlongWordTrack? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         if (savedInstanceState != null) {
@@ -191,6 +194,12 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
         themeIndex = THEMES.indexOf(preferences.theme).coerceAtLeast(0)
         readerLayout = preferences.layout
         highlights = preferences.loadHighlights()
+        audiobookId?.let(BundledContent::wordTimingAssetPath)?.let { assetPath ->
+            lifecycleScope.launch(Dispatchers.IO) {
+                val raw = runCatching { assets.open(assetPath).bufferedReader().readText() }.getOrNull()
+                wordTrack = raw?.let(FollowAlongWordTrackCodec::decode)
+            }
+        }
         showLoading()
         lifecycleScope.launch {
             runCatching { openPublication() }
@@ -442,6 +451,11 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
 
     private suspend fun syncFollowAlong(playback: PlaybackUiState) {
         if (publicationPositions.isEmpty() || playback.totalDurationMs <= 0L) return
+        val track = wordTrack
+        if (track != null) {
+            syncWordLevelFollowAlong(track, playback)
+            return
+        }
         val positionIndex = (playback.progress * publicationPositions.lastIndex)
             .roundToInt()
             .coerceIn(publicationPositions.indices)
@@ -482,6 +496,34 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
         if (followPassages.current == "Preparing the next passage…") {
             followPassages = FollowAlongPassages(current = "Listening…")
         }
+        applyLineGuide(locator)
+    }
+
+    /**
+     * Word-precise variant of [syncFollowAlong] for books that ship a real timing track (see
+     * [BundledContent.wordTimingAssetPath]) instead of estimating position from playback progress.
+     * Word highlighting updates on every playback tick; page navigation only fires on paragraph
+     * changes, matching the cost profile of the estimation-based path above.
+     */
+    private suspend fun syncWordLevelFollowAlong(track: FollowAlongWordTrack, playback: PlaybackUiState) {
+        followPassages = FollowAlongWordTrackMapper.passagesAt(track, playback.totalPositionMs)
+        val positionIndex = FollowAlongWordTrackMapper
+            .activeParagraphIndex(track, playback.totalPositionMs)
+            .coerceIn(publicationPositions.indices)
+        if (positionIndex == lastFollowAlongPosition) return
+        lastFollowAlongPosition = positionIndex
+        val locator = publicationPositions[positionIndex]
+        navigator?.go(locator, animated = false)
+        navigator?.applyDecorations(
+            listOf(
+                Decoration(
+                    id = FOLLOW_ALONG_DECORATION,
+                    locator = locator,
+                    style = Decoration.Style.Highlight(tint = HIGHLIGHT_AMBER, isActive = true),
+                ),
+            ),
+            FOLLOW_ALONG_GROUP,
+        )
         applyLineGuide(locator)
     }
 
@@ -1113,15 +1155,23 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
                         )
                         Spacer(Modifier.height(18.dp))
                     }
-                    Text(
-                        followPassages.current,
-                        maxLines = 4,
-                        overflow = TextOverflow.Ellipsis,
-                        color = Color.White,
-                        fontSize = 42.sp,
-                        lineHeight = 49.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                    )
+                    val currentWords = followPassages.currentWords
+                    if (currentWords != null) {
+                        FollowAlongKaraokeLine(
+                            words = currentWords,
+                            activeWordIndex = followPassages.activeWordIndex,
+                        )
+                    } else {
+                        Text(
+                            followPassages.current,
+                            maxLines = 4,
+                            overflow = TextOverflow.Ellipsis,
+                            color = Color.White,
+                            fontSize = 42.sp,
+                            lineHeight = 49.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                        )
+                    }
                     if (followPassages.next.isNotBlank()) {
                         Spacer(Modifier.height(22.dp))
                         Text(
@@ -1225,6 +1275,28 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
                         modifier = Modifier.padding(top = 8.dp).align(Alignment.CenterHorizontally),
                     )
                 }
+            }
+        }
+    }
+
+    /** Apple Music-style karaoke line: words already spoken and the active word read solid
+     * white, upcoming words dimmed, each fading in as playback reaches it. */
+    @Composable
+    private fun FollowAlongKaraokeLine(words: List<FollowAlongWord>, activeWordIndex: Int) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(11.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            words.forEachIndexed { index, word ->
+                val target = if (index <= activeWordIndex) 1f else 0.32f
+                val alpha by animateFloatAsState(target, label = "followAlongWordAlpha")
+                Text(
+                    word.text,
+                    color = Color.White.copy(alpha = alpha),
+                    fontSize = 42.sp,
+                    lineHeight = 49.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                )
             }
         }
     }

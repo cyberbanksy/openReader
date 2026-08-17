@@ -7,12 +7,13 @@ package com.orgista.openreader.domain
  * about the reader, playback, or follow-along pipeline is specific to this content.
  */
 object BundledContent {
-    const val EBOOK_ID = "bundled-quiet-hour-ebook"
-    const val AUDIOBOOK_ID = "bundled-quiet-hour-audio"
+    const val EBOOK_ID = "bundled-alice-ch1-ebook"
+    const val AUDIOBOOK_ID = "bundled-alice-ch1-audio"
 
-    private const val EBOOK_ASSET_PATH = "sample/the_quiet_hour.epub"
-    private const val AUDIOBOOK_ASSET_PATH = "sample/the_quiet_hour.m4a"
-    private const val AUDIOBOOK_DURATION_SECONDS = 48.42
+    private const val EBOOK_ASSET_PATH = "sample/alice_ch1.epub"
+    private const val AUDIOBOOK_ASSET_PATH = "sample/alice_ch1.m4a"
+    private const val WORD_TIMING_ASSET_PATH = "sample/alice_ch1_timing.json"
+    private const val AUDIOBOOK_DURATION_SECONDS = 831.25
 
     private val source = BookSource(
         id = "bundled-sample",
@@ -26,17 +27,17 @@ object BundledContent {
         LibraryBook(
             id = EBOOK_ID,
             libraryId = "bundled",
-            title = "The Quiet Hour",
-            creator = "OpenReader Sample",
+            title = "Alice's Adventures in Wonderland: Chapter 1",
+            creator = "Lewis Carroll",
             format = BookFormat.Ebook,
             sources = listOf(source),
         ),
         LibraryBook(
             id = AUDIOBOOK_ID,
             libraryId = "bundled",
-            title = "The Quiet Hour",
-            creator = "OpenReader Sample",
-            narrator = "Sample narration",
+            title = "Alice's Adventures in Wonderland: Chapter 1",
+            creator = "Lewis Carroll",
+            narrator = "LibriVox (public domain reading)",
             format = BookFormat.Audiobook,
             durationSeconds = AUDIOBOOK_DURATION_SECONDS,
             sources = listOf(source),
@@ -49,4 +50,6 @@ object BundledContent {
 
     fun audiobookAsset(bookId: String): AudiobookAsset? =
         AudiobookAsset(AUDIOBOOK_ASSET_PATH, AUDIOBOOK_DURATION_SECONDS).takeIf { bookId == AUDIOBOOK_ID }
+
+    fun wordTimingAssetPath(audiobookId: String): String? = WORD_TIMING_ASSET_PATH.takeIf { audiobookId == AUDIOBOOK_ID }
 }

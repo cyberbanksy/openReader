@@ -20,10 +20,65 @@ data class ReaderHighlight(
     val tint: Int,
 )
 
+data class FollowAlongWord(
+    val text: String,
+    val startMs: Long,
+    val endMs: Long,
+)
+
+data class FollowAlongWordTrack(
+    val paragraphs: List<List<FollowAlongWord>>,
+)
+
+object FollowAlongWordTrackCodec {
+    fun decode(raw: String): FollowAlongWordTrack? = runCatching {
+        val paragraphsJson = JSONObject(raw).getJSONArray("paragraphs")
+        val paragraphs = (0 until paragraphsJson.length()).map { pi ->
+            val wordsJson = paragraphsJson.getJSONArray(pi)
+            (0 until wordsJson.length()).map { wi ->
+                val word = wordsJson.getJSONObject(wi)
+                FollowAlongWord(
+                    text = word.getString("text"),
+                    startMs = word.getLong("startMs"),
+                    endMs = word.getLong("endMs"),
+                )
+            }
+        }
+        FollowAlongWordTrack(paragraphs)
+    }.getOrNull()
+}
+
+object FollowAlongWordTrackMapper {
+    fun activeParagraphIndex(track: FollowAlongWordTrack, positionMs: Long): Int {
+        val paragraphs = track.paragraphs
+        if (paragraphs.isEmpty()) return 0
+        val index = paragraphs.indexOfLast { paragraph -> (paragraph.firstOrNull()?.startMs ?: Long.MAX_VALUE) <= positionMs }
+        return index.coerceIn(0, paragraphs.lastIndex)
+    }
+
+    fun passagesAt(track: FollowAlongWordTrack, positionMs: Long): FollowAlongPassages {
+        val paragraphs = track.paragraphs
+        if (paragraphs.isEmpty()) return FollowAlongPassages()
+        val activeParaIndex = activeParagraphIndex(track, positionMs)
+        val activeWords = paragraphs[activeParaIndex]
+        val activeWordIndex = activeWords.indexOfLast { it.startMs <= positionMs }.coerceAtLeast(0)
+        fun render(words: List<FollowAlongWord>) = words.joinToString(" ") { it.text }
+        return FollowAlongPassages(
+            previous = paragraphs.getOrNull(activeParaIndex - 1)?.let(::render).orEmpty(),
+            current = render(activeWords),
+            next = paragraphs.getOrNull(activeParaIndex + 1)?.let(::render).orEmpty(),
+            currentWords = activeWords,
+            activeWordIndex = activeWordIndex,
+        )
+    }
+}
+
 data class FollowAlongPassages(
     val previous: String = "",
     val current: String = "Preparing the next passage…",
     val next: String = "",
+    val currentWords: List<FollowAlongWord>? = null,
+    val activeWordIndex: Int = -1,
 )
 
 object FollowAlongPassageMapper {
