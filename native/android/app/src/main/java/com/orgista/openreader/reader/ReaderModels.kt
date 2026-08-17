@@ -48,6 +48,12 @@ object FollowAlongWordTrackCodec {
     }.getOrNull()
 }
 
+/** Which paragraph, and which word inside it, the narration is on right now. */
+data class FollowAlongCursor(
+    val paragraphIndex: Int,
+    val wordIndex: Int,
+)
+
 object FollowAlongWordTrackMapper {
     fun activeParagraphIndex(track: FollowAlongWordTrack, positionMs: Long): Int {
         val paragraphs = track.paragraphs
@@ -56,29 +62,29 @@ object FollowAlongWordTrackMapper {
         return index.coerceIn(0, paragraphs.lastIndex)
     }
 
-    fun passagesAt(track: FollowAlongWordTrack, positionMs: Long): FollowAlongPassages {
+    /**
+     * Resolves a playback position to a paragraph/word cursor. Kept allocation-light and free of
+     * string building so it can run on every frame while audio plays — the rendering layer only
+     * rebuilds surrounding paragraph text when [FollowAlongCursor.paragraphIndex] actually changes.
+     */
+    fun cursorAt(track: FollowAlongWordTrack, positionMs: Long): FollowAlongCursor {
         val paragraphs = track.paragraphs
-        if (paragraphs.isEmpty()) return FollowAlongPassages()
-        val activeParaIndex = activeParagraphIndex(track, positionMs)
-        val activeWords = paragraphs[activeParaIndex]
-        val activeWordIndex = activeWords.indexOfLast { it.startMs <= positionMs }.coerceAtLeast(0)
-        fun render(words: List<FollowAlongWord>) = words.joinToString(" ") { it.text }
-        return FollowAlongPassages(
-            previous = paragraphs.getOrNull(activeParaIndex - 1)?.let(::render).orEmpty(),
-            current = render(activeWords),
-            next = paragraphs.getOrNull(activeParaIndex + 1)?.let(::render).orEmpty(),
-            currentWords = activeWords,
-            activeWordIndex = activeWordIndex,
+        if (paragraphs.isEmpty()) return FollowAlongCursor(0, 0)
+        val paragraphIndex = activeParagraphIndex(track, positionMs)
+        val words = paragraphs[paragraphIndex]
+        return FollowAlongCursor(
+            paragraphIndex = paragraphIndex,
+            wordIndex = words.indexOfLast { it.startMs <= positionMs }.coerceAtLeast(0),
         )
     }
+
+    fun renderParagraph(words: List<FollowAlongWord>): String = words.joinToString(" ") { it.text }
 }
 
 data class FollowAlongPassages(
     val previous: String = "",
     val current: String = "Preparing the next passage…",
     val next: String = "",
-    val currentWords: List<FollowAlongWord>? = null,
-    val activeWordIndex: Int = -1,
 )
 
 object FollowAlongPassageMapper {

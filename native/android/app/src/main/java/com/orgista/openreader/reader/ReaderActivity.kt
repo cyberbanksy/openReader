@@ -54,13 +54,17 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -134,6 +138,7 @@ import org.readium.r2.streamer.PublicationOpener
 import org.readium.r2.streamer.parser.DefaultPublicationParser
 import java.io.File
 import java.util.UUID
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalReadiumApi::class)
@@ -168,7 +173,7 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
     private var lastFollowAlongPosition = -1
     private var audioStarting by mutableStateOf(false)
     private var audioError by mutableStateOf<String?>(null)
-    private var wordTrack: FollowAlongWordTrack? = null
+    private var wordTrack by mutableStateOf<FollowAlongWordTrack?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         if (savedInstanceState != null) {
@@ -502,13 +507,13 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
     }
 
     /**
-     * Word-precise variant of [syncFollowAlong] for books that ship a real timing track (see
-     * [BundledContent.wordTimingAssetPath]) instead of estimating position from playback progress.
-     * Word highlighting updates on every playback tick; page navigation only fires on paragraph
-     * changes, matching the cost profile of the estimation-based path above.
+     * Paragraph-level navigation for books that ship a real timing track (see
+     * [BundledContent.wordTimingAssetPath]). The spoken-word text itself is rendered straight from
+     * the track against a frame-clock position (see `rememberNarrationPositionMs`), so it keeps up
+     * with speech instead of stepping once per playback tick; only page turns and decorations —
+     * which are expensive — run here on the coarse tick.
      */
     private suspend fun syncWordLevelFollowAlong(track: FollowAlongWordTrack, playback: PlaybackUiState) {
-        followPassages = FollowAlongWordTrackMapper.passagesAt(track, playback.totalPositionMs)
         val positionIndex = FollowAlongWordTrackMapper
             .activeParagraphIndex(track, playback.totalPositionMs)
             .coerceIn(publicationPositions.indices)
@@ -1054,6 +1059,25 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
             )?.asImageBitmap()
         }
 
+        // With a real timing track the passage is read straight off the frame clock; otherwise fall
+        // back to the coarse, progress-estimated passages maintained by syncFollowAlong.
+        val track = wordTrack?.takeIf { active }
+        val narrationPositionMs = rememberNarrationPositionMs(playback)
+        val cursor = track?.let { FollowAlongWordTrackMapper.cursorAt(it, narrationPositionMs) }
+        val trackedWords = track?.paragraphs?.getOrNull(cursor?.paragraphIndex ?: 0)
+        val trackedPrevious = remember(track, cursor?.paragraphIndex) {
+            track?.paragraphs?.getOrNull((cursor?.paragraphIndex ?: 0) - 1)
+                ?.let(FollowAlongWordTrackMapper::renderParagraph)
+                .orEmpty()
+        }
+        val trackedNext = remember(track, cursor?.paragraphIndex) {
+            track?.paragraphs?.getOrNull((cursor?.paragraphIndex ?: 0) + 1)
+                ?.let(FollowAlongWordTrackMapper::renderParagraph)
+                .orEmpty()
+        }
+        val previousText = if (track != null) trackedPrevious else followPassages.previous
+        val nextText = if (track != null) trackedNext else followPassages.next
+
         Box(Modifier.fillMaxSize().background(FOLLOW_BACKGROUND)) {
             cover?.let { image ->
                 Image(
@@ -1144,50 +1168,44 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
                     modifier = Modifier.weight(1f).widthIn(max = 980.dp).padding(start = 78.dp, top = 16.dp),
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    if (followPassages.previous.isNotBlank()) {
+                    if (previousText.isNotBlank()) {
                         Text(
-                            followPassages.previous,
+                            previousText,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
-                            color = Color.White.copy(alpha = 0.24f),
+                            color = Color.White.copy(alpha = 0.20f),
                             fontFamily = FontFamily.Serif,
-                            fontSize = 25.sp,
-                            lineHeight = 31.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.blur(1.2.dp),
+                            fontSize = 24.sp,
+                            lineHeight = 36.sp,
                         )
-                        Spacer(Modifier.height(18.dp))
+                        Spacer(Modifier.height(22.dp))
                     }
-                    val currentWords = followPassages.currentWords
-                    if (currentWords != null) {
-                        FollowAlongKaraokeLine(
-                            words = currentWords,
-                            activeWordIndex = followPassages.activeWordIndex,
+                    if (trackedWords != null && cursor != null) {
+                        FollowAlongReadingPassage(
+                            words = trackedWords,
+                            activeWordIndex = cursor.wordIndex,
                         )
                     } else {
                         Text(
                             followPassages.current,
-                            maxLines = 4,
+                            maxLines = 5,
                             overflow = TextOverflow.Ellipsis,
                             color = Color.White,
                             fontFamily = FontFamily.Serif,
-                            fontSize = 38.sp,
-                            lineHeight = 48.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            fontSize = FOLLOW_READING_SIZE,
+                            lineHeight = FOLLOW_READING_LINE_HEIGHT,
                         )
                     }
-                    if (followPassages.next.isNotBlank()) {
-                        Spacer(Modifier.height(22.dp))
+                    if (nextText.isNotBlank()) {
+                        Spacer(Modifier.height(26.dp))
                         Text(
-                            followPassages.next,
+                            nextText,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
-                            color = Color.White.copy(alpha = 0.28f),
+                            color = Color.White.copy(alpha = 0.24f),
                             fontFamily = FontFamily.Serif,
-                            fontSize = 27.sp,
-                            lineHeight = 34.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.blur(1.dp),
+                            fontSize = 24.sp,
+                            lineHeight = 36.sp,
                         )
                     }
                 }
@@ -1284,32 +1302,76 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
         }
     }
 
-    /** A single highlighter mark tracks the word being read right now, like a finger
-     * following along the page; every other word reads as plain book text. */
+    /**
+     * Playback position advanced by the frame clock between service ticks.
+     *
+     * [PlaybackService] publishes roughly twice a second, but narration runs about five words a
+     * second, so following the published value alone makes the spoken word visibly lag and skip.
+     * This anchors on each published value and interpolates in between, re-anchoring only on a
+     * seek or real drift so the reading position never jumps backwards mid-sentence.
+     */
     @Composable
-    private fun FollowAlongKaraokeLine(words: List<FollowAlongWord>, activeWordIndex: Int) {
+    private fun rememberNarrationPositionMs(playback: PlaybackUiState): Long {
+        var positionMs by remember { mutableLongStateOf(playback.totalPositionMs) }
+        LaunchedEffect(playback.totalPositionMs, playback.isPlaying) {
+            // Hold our own clock through small jitter so the reading position never stutters
+            // backwards, but accept the player's value on a seek or genuine drift.
+            val rebase = !playback.isPlaying ||
+                abs(playback.totalPositionMs - positionMs) > NARRATION_DRIFT_TOLERANCE_MS
+            val anchorMs = if (rebase) playback.totalPositionMs else positionMs
+            positionMs = anchorMs
+            if (!playback.isPlaying) return@LaunchedEffect
+            // Measure from a fixed anchor rather than summing frame deltas: per-frame integer
+            // division would shed a fraction of a millisecond each frame and fall seconds behind
+            // over a chapter-length track.
+            val anchorNanos = withFrameNanos { it }
+            while (true) {
+                withFrameNanos { frameNanos ->
+                    positionMs = anchorMs + (frameNanos - anchorNanos) / 1_000_000L
+                }
+            }
+        }
+        return positionMs
+    }
+
+    /**
+     * The passage being narrated, set as a page of a book: serif text at a comfortable measure,
+     * with the word currently being spoken picked out in bold white and every other word — read
+     * or upcoming — left as ordinary body text.
+     */
+    @Composable
+    private fun FollowAlongReadingPassage(words: List<FollowAlongWord>, activeWordIndex: Int) {
         FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(9.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(11.dp),
+            verticalArrangement = Arrangement.spacedBy(13.dp),
         ) {
             words.forEachIndexed { index, word ->
-                val highlight by animateFloatAsState(
-                    if (index == activeWordIndex) 1f else 0f,
-                    label = "followAlongWordHighlight",
-                )
-                Text(
-                    word.text,
-                    color = lerp(Color.White, Color(ESPRESSO), highlight),
-                    fontFamily = FontFamily.Serif,
-                    fontSize = 38.sp,
-                    lineHeight = 48.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(5.dp))
-                        .background(Color(HIGHLIGHT_AMBER).copy(alpha = highlight))
-                        .padding(horizontal = 3.dp),
-                )
+                FollowAlongWord(word.text, isBeingRead = index == activeWordIndex)
             }
+        }
+    }
+
+    @Composable
+    private fun FollowAlongWord(text: String, isBeingRead: Boolean) {
+        Box {
+            // A hidden bold copy fixes each word's footprint at its widest, so bolding the spoken
+            // word never nudges the rest of the line and the paragraph stays still while it reads.
+            Text(
+                text,
+                fontFamily = FontFamily.Serif,
+                fontSize = FOLLOW_READING_SIZE,
+                lineHeight = FOLLOW_READING_LINE_HEIGHT,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.alpha(0f),
+            )
+            Text(
+                text,
+                color = if (isBeingRead) Color.White else FOLLOW_READING_REST,
+                fontFamily = FontFamily.Serif,
+                fontSize = FOLLOW_READING_SIZE,
+                lineHeight = FOLLOW_READING_LINE_HEIGHT,
+                fontWeight = if (isBeingRead) FontWeight.Bold else FontWeight.Normal,
+            )
         }
     }
 
@@ -1428,6 +1490,10 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
         private const val FOLLOW_ALONG_DECORATION = "audiobook-position"
         private val FOLLOW_BACKGROUND = Color(0xFF171A24)
         private val FOLLOW_SCRIM = Color(0x89101521)
+        private val FOLLOW_READING_SIZE = 34.sp
+        private val FOLLOW_READING_LINE_HEIGHT = 52.sp
+        private val FOLLOW_READING_REST = Color(0xFFB4B8C4)
+        private const val NARRATION_DRIFT_TOLERANCE_MS = 400L
         private val FOLLOW_ALONG_BLOCK_REGEX = Regex(
             "<(?:p|li|h1|h2|h3|blockquote)\\b[^>]*>(.*?)</(?:p|li|h1|h2|h3|blockquote)>",
             setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
