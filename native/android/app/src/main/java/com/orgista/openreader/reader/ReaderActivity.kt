@@ -14,6 +14,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
@@ -28,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -70,12 +72,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -1059,24 +1065,11 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
             )?.asImageBitmap()
         }
 
-        // With a real timing track the passage is read straight off the frame clock; otherwise fall
+        // With a real timing track the passage scrolls straight off the frame clock; otherwise fall
         // back to the coarse, progress-estimated passages maintained by syncFollowAlong.
         val track = wordTrack?.takeIf { active }
         val narrationPositionMs = rememberNarrationPositionMs(playback)
         val cursor = track?.let { FollowAlongWordTrackMapper.cursorAt(it, narrationPositionMs) }
-        val trackedWords = track?.paragraphs?.getOrNull(cursor?.paragraphIndex ?: 0)
-        val trackedPrevious = remember(track, cursor?.paragraphIndex) {
-            track?.paragraphs?.getOrNull((cursor?.paragraphIndex ?: 0) - 1)
-                ?.let(FollowAlongWordTrackMapper::renderParagraph)
-                .orEmpty()
-        }
-        val trackedNext = remember(track, cursor?.paragraphIndex) {
-            track?.paragraphs?.getOrNull((cursor?.paragraphIndex ?: 0) + 1)
-                ?.let(FollowAlongWordTrackMapper::renderParagraph)
-                .orEmpty()
-        }
-        val previousText = if (track != null) trackedPrevious else followPassages.previous
-        val nextText = if (track != null) trackedNext else followPassages.next
 
         Box(Modifier.fillMaxSize().background(FOLLOW_BACKGROUND)) {
             cover?.let { image ->
@@ -1164,28 +1157,23 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
                     }
                 }
 
-                Column(
-                    modifier = Modifier.weight(1f).widthIn(max = 980.dp).padding(start = 78.dp, top = 16.dp),
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    if (previousText.isNotBlank()) {
-                        Text(
-                            previousText,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            color = Color.White.copy(alpha = 0.20f),
-                            fontFamily = FontFamily.Serif,
-                            fontSize = 24.sp,
-                            lineHeight = 36.sp,
-                        )
-                        Spacer(Modifier.height(22.dp))
-                    }
-                    if (trackedWords != null && cursor != null) {
-                        FollowAlongReadingPassage(
-                            words = trackedWords,
-                            activeWordIndex = cursor.wordIndex,
-                        )
-                    } else {
+                val readingModifier = Modifier.weight(1f).widthIn(max = 980.dp).padding(start = 78.dp, top = 16.dp)
+                if (track != null && cursor != null) {
+                    FollowAlongScrollingPassages(track, cursor, readingModifier)
+                } else {
+                    Column(modifier = readingModifier, verticalArrangement = Arrangement.Center) {
+                        if (followPassages.previous.isNotBlank()) {
+                            Text(
+                                followPassages.previous,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                color = Color.White.copy(alpha = 0.20f),
+                                fontFamily = FontFamily.Serif,
+                                fontSize = 24.sp,
+                                lineHeight = 36.sp,
+                            )
+                            Spacer(Modifier.height(22.dp))
+                        }
                         Text(
                             followPassages.current,
                             maxLines = 5,
@@ -1195,18 +1183,18 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
                             fontSize = FOLLOW_READING_SIZE,
                             lineHeight = FOLLOW_READING_LINE_HEIGHT,
                         )
-                    }
-                    if (nextText.isNotBlank()) {
-                        Spacer(Modifier.height(26.dp))
-                        Text(
-                            nextText,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            color = Color.White.copy(alpha = 0.24f),
-                            fontFamily = FontFamily.Serif,
-                            fontSize = 24.sp,
-                            lineHeight = 36.sp,
-                        )
+                        if (followPassages.next.isNotBlank()) {
+                            Spacer(Modifier.height(26.dp))
+                            Text(
+                                followPassages.next,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                color = Color.White.copy(alpha = 0.24f),
+                                fontFamily = FontFamily.Serif,
+                                fontSize = 24.sp,
+                                lineHeight = 36.sp,
+                            )
+                        }
                     }
                 }
 
@@ -1332,6 +1320,86 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
             }
         }
         return positionMs
+    }
+
+    /**
+     * Continuously scrolling narration view. The line being read is held at a fixed height on the
+     * screen while the prose travels up past it, and surrounding paragraphs recede with distance,
+     * so the reader always looks at the same spot instead of hunting for the moving word.
+     *
+     * The active paragraph is measured once it is laid out and the word cursor interpolates a
+     * position inside it, which keeps the scroll moving smoothly through a long paragraph rather
+     * than sitting still until the paragraph changes.
+     */
+    @Composable
+    private fun FollowAlongScrollingPassages(
+        track: FollowAlongWordTrack,
+        cursor: FollowAlongCursor,
+        modifier: Modifier = Modifier,
+    ) {
+        var viewportHeightPx by remember { mutableFloatStateOf(0f) }
+        var activeTopPx by remember { mutableFloatStateOf(0f) }
+        var activeHeightPx by remember { mutableFloatStateOf(0f) }
+        val paragraphs = track.paragraphs
+        val activeWords = paragraphs.getOrNull(cursor.paragraphIndex).orEmpty()
+
+        // How far through the active paragraph the narration has reached, so the scroll advances
+        // word by word instead of jumping a whole paragraph at a time.
+        val spoken = if (activeWords.isEmpty()) 0f else (cursor.wordIndex + 0.5f) / activeWords.size
+        val readingLinePx = activeTopPx + activeHeightPx * spoken
+        val target = (readingLinePx - viewportHeightPx * FOLLOW_PIN_FRACTION).coerceAtLeast(0f)
+        val offsetPx by animateFloatAsState(
+            targetValue = target,
+            animationSpec = spring(dampingRatio = 1f, stiffness = FOLLOW_SCROLL_STIFFNESS),
+            label = "followAlongScroll",
+        )
+
+        Box(
+            modifier
+                .clipToBounds()
+                .onSizeChanged { viewportHeightPx = it.height.toFloat() },
+        ) {
+            Column(
+                Modifier
+                    // The stack has to be free to grow past the panel: it is taller than the
+                    // screen by design and gets clipped, rather than squeezed into the viewport.
+                    .wrapContentHeight(align = Alignment.Top, unbounded = true)
+                    .graphicsLayer { translationY = -offsetPx },
+            ) {
+                // Always start from the top of the chapter so paragraphs above the reading
+                // position keep their measured offsets. Dropping them as the narration moved on
+                // would shift the whole stack instantly while the scroll was still animating,
+                // which reads as a jolt at every paragraph break.
+                val last = (cursor.paragraphIndex + 3).coerceAtMost(paragraphs.lastIndex)
+                for (index in 0..last) {
+                    val distance = index - cursor.paragraphIndex
+                    val words = paragraphs[index]
+                    if (distance == 0) {
+                        Box(
+                            Modifier.onPlaced { coordinates ->
+                                activeTopPx = coordinates.positionInParent().y
+                                activeHeightPx = coordinates.size.height.toFloat()
+                            },
+                        ) {
+                            FollowAlongReadingPassage(words, cursor.wordIndex)
+                        }
+                    } else {
+                        val depth = abs(distance)
+                        Text(
+                            FollowAlongWordTrackMapper.renderParagraph(words),
+                            color = Color.White.copy(alpha = (0.30f / depth).coerceAtLeast(0.06f)),
+                            fontFamily = FontFamily.Serif,
+                            fontSize = FOLLOW_READING_SIZE,
+                            lineHeight = FOLLOW_READING_LINE_HEIGHT,
+                            // Only the near neighbours are worth blurring; anything further has
+                            // already scrolled out of sight, so skip the render effect there.
+                            modifier = if (depth <= 3) Modifier.blur((depth * 2).dp) else Modifier,
+                        )
+                    }
+                    Spacer(Modifier.height(30.dp))
+                }
+            }
+        }
     }
 
     /**
@@ -1494,6 +1562,9 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
         private val FOLLOW_READING_LINE_HEIGHT = 52.sp
         private val FOLLOW_READING_REST = Color(0xFFB4B8C4)
         private const val NARRATION_DRIFT_TOLERANCE_MS = 400L
+        /** Height on screen, as a fraction of the panel, where the line being read is held. */
+        private const val FOLLOW_PIN_FRACTION = 0.30f
+        private const val FOLLOW_SCROLL_STIFFNESS = 320f
         private val FOLLOW_ALONG_BLOCK_REGEX = Regex(
             "<(?:p|li|h1|h2|h3|blockquote)\\b[^>]*>(.*?)</(?:p|li|h1|h2|h3|blockquote)>",
             setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
