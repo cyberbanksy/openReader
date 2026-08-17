@@ -20,6 +20,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.orgista.openreader.domain.BookFormat
+import com.orgista.openreader.domain.BundledContent
 import com.orgista.openreader.domain.CatalogAvailability
 import com.orgista.openreader.domain.CatalogSourceKind
 import com.orgista.openreader.domain.DeviceClassifier
@@ -49,15 +50,15 @@ class MainActivity : ComponentActivity() {
                         onFilter = viewModel::setFilter,
                         onSelectBook = viewModel::selectBook,
                         onOpenBook = { book ->
-                            val readyInAudiobookshelf = book.sources.any {
-                                it.kind == CatalogSourceKind.Audiobookshelf &&
+                            val readySource = book.sources.firstOrNull {
+                                (it.kind == CatalogSourceKind.Audiobookshelf || it.kind == CatalogSourceKind.Bundled) &&
                                     it.availability == CatalogAvailability.Ready
                             }
                             val publicDomainSource = book.sources.firstOrNull {
                                 it.kind == CatalogSourceKind.PublicDomain &&
                                     it.availability == CatalogAvailability.Available
                             }
-                            if (book.format == BookFormat.Ebook && !book.isDemo && readyInAudiobookshelf) {
+                            if (book.format == BookFormat.Ebook && !book.isDemo && readySource != null) {
                                 val pairedAudiobook = matchingFormats(state.books, book)
                                     .firstOrNull { it.format == BookFormat.Audiobook }
                                 startActivity(
@@ -68,6 +69,11 @@ class MainActivity : ComponentActivity() {
                                         audiobookId = pairedAudiobook?.id,
                                         audiobookTitle = pairedAudiobook?.title,
                                         audiobookCreator = pairedAudiobook?.creator,
+                                        bundledEbookAsset = if (readySource.kind == CatalogSourceKind.Bundled) {
+                                            BundledContent.ebookAssetPath(book.id)
+                                        } else {
+                                            null
+                                        },
                                     ),
                                 )
                             } else if (book.format == BookFormat.Ebook && !book.isDemo && publicDomainSource != null) {

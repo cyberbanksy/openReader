@@ -11,11 +11,14 @@ import com.orgista.openreader.data.ArrConnections
 import com.orgista.openreader.data.ArrCredential
 import com.orgista.openreader.data.AudiobookshelfApi
 import com.orgista.openreader.data.BookshelfApi
+import com.orgista.openreader.data.PlaybackDescriptor
+import com.orgista.openreader.data.PlaybackTrack
 import com.orgista.openreader.data.PublicDomainCatalogApi
 import com.orgista.openreader.data.PublicDomainSettings
 import com.orgista.openreader.data.ServerSession
 import com.orgista.openreader.data.SessionStore
 import com.orgista.openreader.domain.BookFormat
+import com.orgista.openreader.domain.BundledContent
 import com.orgista.openreader.domain.CatalogAvailability
 import com.orgista.openreader.domain.CatalogMerger
 import com.orgista.openreader.domain.CatalogSourceKind
@@ -39,7 +42,7 @@ enum class LibraryFilter {
 }
 
 data class OpenReaderUiState(
-    val books: List<LibraryBook> = DemoCatalog.books,
+    val books: List<LibraryBook> = DemoCatalog.books + BundledContent.books,
     val connected: Boolean = false,
     val arrConnected: Boolean = false,
     val loading: Boolean = false,
@@ -291,6 +294,33 @@ class OpenReaderViewModel(application: Application) : AndroidViewModel(applicati
             if (arrConnections == null) showArrConnection(true) else showConnection(true)
             return
         }
+        val bundledSource = book.sources.firstOrNull {
+            it.kind == CatalogSourceKind.Bundled && it.availability == CatalogAvailability.Ready
+        }
+        if (bundledSource != null) {
+            if (book.format == BookFormat.Ebook) return
+            val asset = BundledContent.audiobookAsset(book.id) ?: return
+            PlaybackService.play(
+                getApplication(),
+                PlaybackDescriptor(
+                    sessionId = "bundled-${book.id}",
+                    title = book.title,
+                    creator = book.creator,
+                    coverUrl = "",
+                    currentTimeSeconds = 0.0,
+                    tracks = listOf(
+                        PlaybackTrack(
+                            index = 1,
+                            title = book.title,
+                            url = "asset:///${asset.assetPath}",
+                            durationSeconds = asset.durationSeconds,
+                        ),
+                    ),
+                ),
+            )
+            mutableState.update { it.copy(nowPlaying = book) }
+            return
+        }
         val readyInAudiobookshelf = book.sources.any {
             it.kind == CatalogSourceKind.Audiobookshelf && it.availability == CatalogAvailability.Ready
         }
@@ -387,7 +417,7 @@ class OpenReaderViewModel(application: Application) : AndroidViewModel(applicati
         val hasConnections = loaded.session != null || currentArr != null
         mutableState.update {
             it.copy(
-                books = if (hasConnections) loaded.books else DemoCatalog.books,
+                books = (if (hasConnections) loaded.books else DemoCatalog.books) + BundledContent.books,
                 connected = loaded.session != null,
                 arrConnected = currentArr != null,
                 loading = false,

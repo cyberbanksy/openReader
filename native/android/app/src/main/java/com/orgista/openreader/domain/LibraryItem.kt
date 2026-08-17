@@ -17,6 +17,7 @@ enum class CatalogSourceKind {
     Arr,
     PublicLibrary,
     PublicDomain,
+    Bundled,
 }
 
 enum class CatalogAvailability {

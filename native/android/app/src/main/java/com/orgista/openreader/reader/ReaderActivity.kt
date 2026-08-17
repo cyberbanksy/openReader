@@ -87,16 +87,22 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.orgista.openreader.data.AudiobookshelfApi
 import com.orgista.openreader.data.CoverImageLoader
+import com.orgista.openreader.data.EbookFile
+import com.orgista.openreader.data.PlaybackDescriptor
+import com.orgista.openreader.data.PlaybackTrack
 import com.orgista.openreader.data.PublicDomainCatalogApi
 import com.orgista.openreader.data.PublicDomainSettings
 import com.orgista.openreader.data.SessionStore
 import com.orgista.openreader.domain.BookFormat
+import com.orgista.openreader.domain.BundledContent
 import com.orgista.openreader.domain.LibraryBook
 import com.orgista.openreader.playback.PlaybackService
 import com.orgista.openreader.playback.PlaybackUiState
 import com.orgista.openreader.ui.theme.OpenReaderTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.readium.r2.navigator.Decoration
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
@@ -131,6 +137,7 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
     private lateinit var bookId: String
     private lateinit var bookTitle: String
     private var publicDomainSourceId: String? = null
+    private var bundledEbookAsset: String? = null
     private var audiobookId: String? = null
     private var audiobookTitle: String? = null
     private var audiobookCreator: String? = null
@@ -171,6 +178,7 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
         bookId = intent.getStringExtra(EXTRA_BOOK_ID).orEmpty()
         bookTitle = intent.getStringExtra(EXTRA_BOOK_TITLE).orEmpty().ifBlank { "Book" }
         publicDomainSourceId = intent.getStringExtra(EXTRA_PUBLIC_DOMAIN_SOURCE_ID)
+        bundledEbookAsset = intent.getStringExtra(EXTRA_BUNDLED_EBOOK_ASSET)
         audiobookId = intent.getStringExtra(EXTRA_AUDIOBOOK_ID)
         audiobookTitle = intent.getStringExtra(EXTRA_AUDIOBOOK_TITLE)
         audiobookCreator = intent.getStringExtra(EXTRA_AUDIOBOOK_CREATOR)
@@ -191,8 +199,21 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
         }
     }
 
+    private suspend fun copyBundledAsset(assetPath: String): File = withContext(Dispatchers.IO) {
+        val cacheDirectory = File(cacheDir, "epubs").apply { mkdirs() }
+        val destination = File(cacheDirectory, EbookFile.cacheName(bookId))
+        if (!destination.isFile || destination.length() == 0L) {
+            assets.open(assetPath).use { input ->
+                destination.outputStream().use { output -> input.copyTo(output) }
+            }
+        }
+        destination
+    }
+
     private suspend fun openPublication(): Publication {
-        val file = publicDomainSourceId?.let { sourceId ->
+        val file = bundledEbookAsset?.let { assetPath ->
+            copyBundledAsset(assetPath)
+        } ?: publicDomainSourceId?.let { sourceId ->
             PublicDomainCatalogApi().downloadEbook(
                 sourceId = sourceId,
                 standardEbooksEmail = PublicDomainSettings(this).standardEbooksEmail(),
@@ -570,19 +591,38 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
         audioError = null
         lifecycleScope.launch {
             runCatching {
-                val session = requireNotNull(SessionStore(this@ReaderActivity).load()) {
-                    "Connect to Audiobookshelf before listening."
-                }
-                AudiobookshelfApi().startPlayback(
-                    session,
-                    LibraryBook(
-                        id = id,
-                        libraryId = "",
+                val bundledAsset = BundledContent.audiobookAsset(id)
+                if (bundledAsset != null) {
+                    PlaybackDescriptor(
+                        sessionId = "bundled-$id",
                         title = audiobookTitle ?: bookTitle,
                         creator = audiobookCreator.orEmpty(),
-                        format = BookFormat.Audiobook,
-                    ),
-                )
+                        coverUrl = "",
+                        currentTimeSeconds = 0.0,
+                        tracks = listOf(
+                            PlaybackTrack(
+                                index = 1,
+                                title = audiobookTitle ?: bookTitle,
+                                url = "asset:///${bundledAsset.assetPath}",
+                                durationSeconds = bundledAsset.durationSeconds,
+                            ),
+                        ),
+                    )
+                } else {
+                    val session = requireNotNull(SessionStore(this@ReaderActivity).load()) {
+                        "Connect to Audiobookshelf before listening."
+                    }
+                    AudiobookshelfApi().startPlayback(
+                        session,
+                        LibraryBook(
+                            id = id,
+                            libraryId = "",
+                            title = audiobookTitle ?: bookTitle,
+                            creator = audiobookCreator.orEmpty(),
+                            format = BookFormat.Audiobook,
+                        ),
+                    )
+                }
             }.onSuccess { descriptor ->
                 PlaybackService.play(this@ReaderActivity, descriptor)
                 if (followText) updateFollowAlong(true)
@@ -1278,6 +1318,7 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
         private const val EXTRA_BOOK_ID = "book_id"
         private const val EXTRA_BOOK_TITLE = "book_title"
         private const val EXTRA_PUBLIC_DOMAIN_SOURCE_ID = "public_domain_source_id"
+        private const val EXTRA_BUNDLED_EBOOK_ASSET = "bundled_ebook_asset"
         private const val EXTRA_AUDIOBOOK_ID = "audiobook_id"
         private const val EXTRA_AUDIOBOOK_TITLE = "audiobook_title"
         private const val EXTRA_AUDIOBOOK_CREATOR = "audiobook_creator"
@@ -1324,12 +1365,14 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
             audiobookId: String? = null,
             audiobookTitle: String? = null,
             audiobookCreator: String? = null,
+            bundledEbookAsset: String? = null,
         ) = Intent(context, ReaderActivity::class.java)
                 .putExtra(EXTRA_BOOK_ID, bookId)
                 .putExtra(EXTRA_BOOK_TITLE, title)
                 .putExtra(EXTRA_AUDIOBOOK_ID, audiobookId)
                 .putExtra(EXTRA_AUDIOBOOK_TITLE, audiobookTitle)
                 .putExtra(EXTRA_AUDIOBOOK_CREATOR, audiobookCreator)
+                .putExtra(EXTRA_BUNDLED_EBOOK_ASSET, bundledEbookAsset)
 
         fun publicDomainIntent(
             context: android.content.Context,

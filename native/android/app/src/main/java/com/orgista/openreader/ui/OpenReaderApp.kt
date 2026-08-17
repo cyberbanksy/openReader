@@ -1720,6 +1720,7 @@ private fun sourceIcon(kind: CatalogSourceKind) = when (kind) {
     CatalogSourceKind.Arr -> Icons.Rounded.Settings
     CatalogSourceKind.PublicLibrary -> Icons.AutoMirrored.Rounded.LibraryBooks
     CatalogSourceKind.PublicDomain -> Icons.Rounded.AutoStories
+    CatalogSourceKind.Bundled -> Icons.AutoMirrored.Rounded.MenuBook
 }
 
 private fun sourceKindLabel(kind: CatalogSourceKind) = when (kind) {
@@ -1727,6 +1728,7 @@ private fun sourceKindLabel(kind: CatalogSourceKind) = when (kind) {
     CatalogSourceKind.Arr -> "ARR"
     CatalogSourceKind.PublicLibrary -> "Public libraries"
     CatalogSourceKind.PublicDomain -> "Public domain"
+    CatalogSourceKind.Bundled -> "Included with app"
 }
 
 private fun availabilityLabel(availability: CatalogAvailability) = when (availability) {

@@ -31,6 +31,11 @@ fun primaryBookAction(book: LibraryBook, connected: Boolean): String {
     ) {
         return "Download"
     }
+    if (source?.kind == com.orgista.openreader.domain.CatalogSourceKind.Bundled &&
+        source.availability == CatalogAvailability.Ready
+    ) {
+        return if (book.format == BookFormat.Audiobook) "Listen" else "Read"
+    }
     if (!connected) return "Connect"
     val availability = source?.availability ?: CatalogAvailability.Ready
     return when (availability) {
