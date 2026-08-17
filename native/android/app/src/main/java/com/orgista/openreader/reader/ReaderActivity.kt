@@ -65,10 +65,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
@@ -1148,9 +1150,10 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                             color = Color.White.copy(alpha = 0.24f),
+                            fontFamily = FontFamily.Serif,
                             fontSize = 25.sp,
                             lineHeight = 31.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.blur(1.2.dp),
                         )
                         Spacer(Modifier.height(18.dp))
@@ -1167,9 +1170,10 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
                             maxLines = 4,
                             overflow = TextOverflow.Ellipsis,
                             color = Color.White,
-                            fontSize = 42.sp,
-                            lineHeight = 49.sp,
-                            fontWeight = FontWeight.ExtraBold,
+                            fontFamily = FontFamily.Serif,
+                            fontSize = 38.sp,
+                            lineHeight = 48.sp,
+                            fontWeight = FontWeight.SemiBold,
                         )
                     }
                     if (followPassages.next.isNotBlank()) {
@@ -1179,9 +1183,10 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                             color = Color.White.copy(alpha = 0.28f),
+                            fontFamily = FontFamily.Serif,
                             fontSize = 27.sp,
                             lineHeight = 34.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.blur(1.dp),
                         )
                     }
@@ -1279,23 +1284,30 @@ class ReaderActivity : FragmentActivity(), EpubNavigatorFragment.Listener {
         }
     }
 
-    /** Apple Music-style karaoke line: words already spoken and the active word read solid
-     * white, upcoming words dimmed, each fading in as playback reaches it. */
+    /** A single highlighter mark tracks the word being read right now, like a finger
+     * following along the page; every other word reads as plain book text. */
     @Composable
     private fun FollowAlongKaraokeLine(words: List<FollowAlongWord>, activeWordIndex: Int) {
         FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(11.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(9.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             words.forEachIndexed { index, word ->
-                val target = if (index <= activeWordIndex) 1f else 0.32f
-                val alpha by animateFloatAsState(target, label = "followAlongWordAlpha")
+                val highlight by animateFloatAsState(
+                    if (index == activeWordIndex) 1f else 0f,
+                    label = "followAlongWordHighlight",
+                )
                 Text(
                     word.text,
-                    color = Color.White.copy(alpha = alpha),
-                    fontSize = 42.sp,
-                    lineHeight = 49.sp,
-                    fontWeight = FontWeight.ExtraBold,
+                    color = lerp(Color.White, Color(ESPRESSO), highlight),
+                    fontFamily = FontFamily.Serif,
+                    fontSize = 38.sp,
+                    lineHeight = 48.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(Color(HIGHLIGHT_AMBER).copy(alpha = highlight))
+                        .padding(horizontal = 3.dp),
                 )
             }
         }
